@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Hand Analyzer</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        #root {
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+        
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+
+        const PokerAnalyzer = () => {
+          const [holeCards, setHoleCards] = useState([]);
+          const [communityCards, setCommunityCards] = useState([]);
+          const [position, setPosition] = useState('BTN');
+          const [action, setAction] = useState('raise');
+          const [potSize, setPotSize] = useState(100);
+          const [betSize, setBetSize] = useState(50);
+          const [analysis, setAnalysis] = useState(null);
+          const [showCardSelector, setShowCardSelector] = useState(null);
+
+          const addCard = (rank, suit, type) => {
+            const card = { rank, suit };
+            if (type === 'hole') {
+              if (holeCards.length < 2) {
+                setHoleCards([...holeCards, card]);
+              }
+            } else {
+              if (communityCards.length < 5) {
+                setCommunityCards([...communityCards, card]);
+              }
+            }
+            setShowCardSelector(null);
+          };
+
+          const removeCard = (index, type) => {
+            if (type === 'hole') {
+              setHoleCards(holeCards.filter((_, i) => i !== index));
+            } else {
+              setCommunityCards(communityCards.filter((_, i) => i !== index));
+            }
+          };
+
+          const analyzeHand = () => {
+            if (holeCards.length !== 2) {
+              alert('Please select exactly 2 hole cards');
+              return;
+            }
+
+            const handStrength = evaluateHand([...holeCards, ...communityCards]);
+            const equity = calculateEquity(holeCards, communityCards);
+            const actionAnalysis = analyzeAction(holeCards, communityCards, position, action, potSize, betSize);
+            const preflopAdvice = getPreflopStrategy(holeCards, position);
+
+            setAnalysis({
+              handStrength,
+              equity,
+              actionAnalysis,
+              preflopAdvice
+            });
+          };
+
+          const reset = () => {
+            setHoleCards([]);
+            setCommunityCards([]);
+            setAnalysis(null);
+          };
+
+          const CardSelector = ({ type }) => (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50
+            }}>
+              <div style={{
+                backgroundColor: 'white',
+                padding: '24px',
+                borderRadius: '8px',
+                maxWidth: '500px',
+                maxHeight: '80vh',
+                overflow: 'auto'
+              }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Select a Card</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+                  {SUITS.map(suit => (
+                    <div key={suit} style={{ textAlign: 'center' }}>
+                      <div style={{ 
+                        fontSize: '24px', 
+                        color: suit === '♥' || suit === '♦' ? '#dc2626' : 'black' 
+                      }}>
+                        {suit}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px' }}>
+                        {RANKS.map(rank => (
+                          <button
+                            key={`${rank}${suit}`}
+                            onClick={() => addCard(rank, suit, type)}
+                            style={{
+                              padding: '4px 8px',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '14px'
+                            }}
+                            onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
+                            onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
+                          >
+                            {rank}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setShowCardSelector(null)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    backgroundColor: '#6b7280',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#4b5563'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#6b7280'}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          );
+
+          const CardDisplay = ({ card, onRemove }) => (
+            <div
+              onClick={onRemove}
+              style={{
+                position: 'relative',
+                width: '64px',
+                height: '96px',
+                backgroundColor: 'white',
+                border: '2px solid #1f2937',
+                borderRadius: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
+            >
+              <div style={{ 
+                fontSize: '32px', 
+                fontWeight: 'bold',
+                color: card.suit === '♥' || card.suit === '♦' ? '#dc2626' : 'black' 
+              }}>
+                {card.rank}
+              </div>
+              <div style={{ 
+                fontSize: '24px',
+                color: card.suit === '♥' || card.suit === '♦' ? '#dc2626' : 'black' 
+              }}>
+                {card.suit}
+              </div>
+            </div>
+          );
+
+          return (
+            <div style={{
+              minHeight: '100vh',
+              background: 'linear-gradient(to bottom right, #065f46, #064e3b)',
+              padding: '32px'
+            }}>
+              <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
+                <h1 style={{ 
+                  fontSize: '36px', 
+                  fontWeight: 'bold', 
+                  color: 'white', 
+                  marginBottom: '8px', 
+                  textAlign: 'center' 
+                }}>
+                  Poker Hand Analyzer
+                </h1>
+                <p style={{ color: '#a7f3d0', textAlign: 'center', marginBottom: '32px' }}>
+                  GTO Strategy Analysis Tool
+                </p>
+
+                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
+                    Your Hole Cards
+                  </h2>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {holeCards.map((card, i) => (
+                      <CardDisplay key={i} card={card} onRemove={() => removeCard(i, 'hole')} />
+                    ))}
+                    {holeCards.length < 2 && (
+                      <button
+                        onClick={() => setShowCardSelector('hole')}
+                        style={{
+                          width: '64px',
+                          height: '96px',
+                          border: '2px dashed white',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: '32px',
+                          backgroundColor: 'transparent',
+                          cursor: 'pointer'
+                        }}
+                        onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
+                    Community Cards
+                  </h2>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {communityCards.map((card, i) => (
+                      <CardDisplay key={i} card={card} onRemove={() => removeCard(i, 'community')} />
+                    ))}
+                    {communityCards.length < 5 && (
+                      <button
+                        onClick={() => setShowCardSelector('community')}
+                        style={{
+                          width: '64px',
+                          height: '96px',
+                          border: '2px dashed white',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: '32px',
+                          backgroundColor: 'transparent',
+                          cursor: 'pointer'
+                        }}
+                        onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
+                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                      >
+                        +
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
+                    Situation
+                  </h2>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Position</label>
+                      <select
+                        value={position}
+                        onChange={(e) => setPosition(e.target.value)}
+                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
+                      >
+                        <option value="UTG">UTG (Early)</option>
+                        <option value="MP">MP (Middle)</option>
+                        <option value="CO">CO (Cutoff)</option>
+                        <option value="BTN">BTN (Button)</option>
+                        <option value="SB">SB (Small Blind)</option>
+                        <option value="BB">BB (Big Blind)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Action</label>
+                      <select
+                        value={action}
+                        onChange={(e) => setAction(e.target.value)}
+                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
+                      >
+                        <option value="fold">Fold</option>
+                        <option value="call">Call</option>
+                        <option value="raise">Raise</option>
+                        <option value="check">Check</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Pot Size ($)</label>
+                      <input
+                        type="number"
+                        value={potSize}
+                        onChange={(e) => setPotSize(Number(e.target.value))}
+                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Bet Size ($)</label>
+                      <input
+                        type="number"
+                        value={betSize}
+                        onChange={(e) => setBetSize(Number(e.target.value))}
+                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={analyzeHand}
+                    style={{
+                      flex: 1,
+                      minWidth: '200px',
+                      backgroundColor: '#eab308',
+                      color: 'black',
+                      fontWeight: 'bold',
+                      padding: '16px 32px',
+                      borderRadius: '8px',
+                              fontSize: '20px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#ca8a04'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = '#eab308'}
+                  >
+                    Analyze Hand
+                  </button>
+                  <button
+                    onClick={reset}
+                    style={{
+                      backgroundColor: '#4b5563',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      padding: '16px 32px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                    onMouseOver={(e) => e.target.style.backgroundColor = '#374151'}
+                    onMouseOut={(e) => e.target.style.backgroundColor = '#4b5563'}
+                  >
+                    Reset
+                  </button>
+                </div>
+
+                {analysis && (
+                  <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '24px' }}>
+                    <h2 style={{ fontSize: '32px', fontWeight: 'bold', color: '#1f2937', marginBottom: '24px' }}>
+                      Analysis Results
+                    </h2>
+
+                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
+                        Hand Strength
+                      </h3>
+                      <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#059669' }}>
+                        {analysis.handStrength.name}
+                      </p>
+                      <p style={{ color: '#6b7280' }}>Rank: {analysis.handStrength.rank}</p>
+                    </div>
+
+                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
+                        Estimated Equity
+                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div style={{ 
+                          flex: 1, 
+                          backgroundColor: '#e5e7eb', 
+                          borderRadius: '9999px', 
+                          height: '32px',
+                          position: 'relative'
+                        }}>
+                          <div
+                            style={{
+                              backgroundColor: '#10b981',
+                              height: '32px',
+                              borderRadius: '9999px',
+                              width: `${analysis.equity}%`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              fontWeight: 'bold',
+                              minWidth: '60px'
+                            }}
+                          >
+                            {analysis.equity.toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
+                        Action Analysis
+                      </h3>
+                      <div style={{
+                        padding: '16px',
+                        borderRadius: '4px',
+                        backgroundColor: 
+                          analysis.actionAnalysis.recommendation === 'Good' ? '#d1fae5' :
+                          analysis.actionAnalysis.recommendation === 'Questionable' ? '#fef3c7' : '#fee2e2'
+                      }}>
+                        <p style={{ fontWeight: 'bold', fontSize: '18px', marginBottom: '8px' }}>
+                          {analysis.actionAnalysis.recommendation}
+                        </p>
+                        <p style={{ color: '#374151' }}>{analysis.actionAnalysis.reason}</p>
+                        <p style={{ color: '#6b7280', marginTop: '8px', fontSize: '14px' }}>
+                          Pot Odds: {analysis.actionAnalysis.potOdds.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
+                        Preflop Strategy
+                      </h3>
+                      <div style={{ backgroundColor: '#dbeafe', padding: '16px', borderRadius: '4px' }}>
+                        <p style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                          {analysis.preflopAdvice.category}
+                        </p>
+                        <p style={{ color: '#374151' }}>{analysis.preflopAdvice.advice}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {showCardSelector && <CardSelector type={showCardSelector} />}
+            </div>
+          );
+        };
+
+        const evaluateHand = (cards) => {
+          if (cards.length < 5) {
+            return { name: 'Incomplete Hand', rank: 0 };
+          }
+
+          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+          const ranks = cards.map(c => rankValues[c.rank]);
+          const suits = cards.map(c => c.suit);
+          
+          const rankCounts = {};
+          ranks.forEach(r => rankCounts[r] = (rankCounts[r] || 0) + 1);
+          
+          const counts = Object.values(rankCounts).sort((a, b) => b - a);
+          const isFlush = suits.some(s => suits.filter(suit => suit === s).length >= 5);
+          
+          const sortedRanks = [...new Set(ranks)].sort((a, b) => b - a);
+          let isStraight = false;
+          for (let i = 0; i <= sortedRanks.length - 5; i++) {
+            if (sortedRanks[i] - sortedRanks[i + 4] === 4) {
+              isStraight = true;
+              break;
+            }
+          }
+          if (sortedRanks.includes(14) && sortedRanks.includes(5) && sortedRanks.includes(4) && sortedRanks.includes(3) && sortedRanks.includes(2)) {
+            isStraight = true;
+          }
+
+          if (isStraight && isFlush) return { name: 'Straight Flush', rank: 9 };
+          if (counts[0] === 4) return { name: 'Four of a Kind', rank: 8 };
+          if (counts[0] === 3 && counts[1] >= 2) return { name: 'Full House', rank: 7 };
+          if (isFlush) return { name: 'Flush', rank: 6 };
+          if (isStraight) return { name: 'Straight', rank: 5 };
+          if (counts[0] === 3) return { name: 'Three of a Kind', rank: 4 };
+          if (counts[0] === 2 && counts[1] === 2) return { name: 'Two Pair', rank: 3 };
+          if (counts[0] === 2) return { name: 'One Pair', rank: 2 };
+          return { name: 'High Card', rank: 1 };
+        };
+
+        const calculateEquity = (holeCards, communityCards) => {
+          const handStrength = evaluateHand([...holeCards, ...communityCards]);
+          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+          
+          let baseEquity = handStrength.rank * 10;
+          
+          const holeRanks = holeCards.map(c => rankValues[c.rank]);
+          const isPair = holeRanks[0] === holeRanks[1];
+          const highCard = Math.max(...holeRanks);
+          
+          if (isPair) baseEquity += 10;
+          if (highCard >= 12) baseEquity += 5;
+          if (holeCards[0].suit === holeCards[1].suit) baseEquity += 3;
+          
+          const cardsToGo = 5 - communityCards.length;
+          if (cardsToGo > 0) baseEquity -= cardsToGo * 2;
+          
+          return Math.min(Math.max(baseEquity, 5), 95);
+        };
+
+        const analyzeAction = (holeCards, communityCards, position, action, potSize, betSize) => {
+          const equity = calculateEquity(holeCards, communityCards);
+          const potOdds = (betSize / (potSize + betSize)) * 100;
+          
+          let recommendation = 'Questionable';
+          let reason = '';
+
+          if (action === 'fold') {
+            if (equity < 30) {
+              recommendation = 'Good';
+              reason = 'Your hand is weak. Folding preserves your chips.';
+            } else {
+              recommendation = 'Bad';
+              reason = 'You have decent equity. Consider calling or raising.';
+            }
+          } else if (action === 'call') {
+            if (equity > potOdds) {
+              recommendation = 'Good';
+              reason = `Your equity (${equity.toFixed(1)}%) exceeds pot odds (${potOdds.toFixed(1)}%). Profitable call.`;
+            } else {
+              recommendation = 'Bad';
+              reason = `Your equity (${equity.toFixed(1)}%) is below pot odds (${potOdds.toFixed(1)}%). Unprofitable call.`;
+            }
+          } else if (action === 'raise') {
+            if (equity > 60) {
+              recommendation = 'Good';
+              reason = 'Strong hand. Raising for value is optimal.';
+            } else if (equity > 40 && ['BTN', 'CO'].includes(position)) {
+              recommendation = 'Good';
+              reason = 'Good position with decent equity. Semi-bluff or value raise.';
+            } else {
+              recommendation = 'Questionable';
+              reason = 'Raising with moderate equity. Be cautious of opponents.';
+            }
+          }
+
+          return { recommendation, reason, potOdds };
+        };
+
+        const getPreflopStrategy = (holeCards, position) => {
+          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+          const ranks = holeCards.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+          const isPair = ranks[0] === ranks[1];
+          const isSuited = holeCards[0].suit === holeCards[1].suit;
+          const highCard = ranks[0];
+          const gap = ranks[0] - ranks[1];
+
+          let category = '';
+          let advice = '';
+
+          if (isPair && highCard >= 10) {
+            category = 'Premium Pair';
+            advice = 'Raise from any position. Consider 3-betting if facing a raise.';
+          } else if (isPair) {
+            category = 'Small/Medium Pair';
+            advice = 'Raise from late position. Call from early/middle if pot odds are good for set mining.';
+          } else if (highCard === 14 && ranks[1] >= 10) {
+            category = 'Strong Broadway';
+            advice = 'Raise from any position. Strong hand with good postflop playability.';
+          } else if (isSuited && gap <= 4 && highCard >= 9) {
+            category = 'Suited Connector/Gapper';
+            advice = 'Raise from late position. Call from middle position. Fold from early unless very deep stacked.';
+          } else if (highCard >= 11 && ranks[1] >= 9) {
+            category = 'Broadway Cards';
+            advice = 'Raise from cutoff/button. Call from middle position. Fold from early unless suited.';
+          } else {
+            category = 'Marginal Hand';
+            advice = 'Fold from early position. Consider calling from late position if cheap. Position matters significantly.';
+          }
+
+          const positionAdvice = {
+            'UTG': 'Play tight from early position. Only premium hands.',
+            'MP': 'Slightly wider range than UTG. Still play relatively tight.',
+            'CO': 'Start widening range. Good stealing position.',
+            'BTN': 'Widest range. You have position postflop.',
+            'SB': 'Tricky spot. Consider folding marginal hands to avoid playing OOP.',
+            'BB': 'You have pot odds to defend. Wider calling range.'
+          };
+
+          advice += ` Position note: ${positionAdvice[position]}`;
+
+          return { category, advice };
+        };
+
+        ReactDOM.render(<PokerAnalyzer />, document.getElementById('root'));
+    </script>
+</body>
+</html>
