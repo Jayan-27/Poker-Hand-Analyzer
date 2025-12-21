@@ -5,12 +5,12 @@ Analyze poker hands, estimate equity, and get actionable advice for preflop and 
 
 ---
 
-## 🔗 Live Demo
+## Live Demo
 Check it out live here: [Poker Hand Analyzer](file:///Users/johndoe/Downloads/poker-analyzer.html)
 
 ---
 
-## 🃏 Features
+## Features
 - **Interactive Card Selection:** Select your 2 hole cards and up to 5 community cards with a visual interface.  
 - **Hand Evaluation:** Automatically determines hand strength (High Card → Straight Flush).  
 - **Equity Estimation:** Calculates your hand’s equity based on hole cards and community cards.  
@@ -20,14 +20,14 @@ Check it out live here: [Poker Hand Analyzer](file:///Users/johndoe/Downloads/po
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 - **HTML5 & CSS3** — Page structure and styling  
 - **JavaScript (ES6+)** — Game logic and interactivity  
 - **React (via CDN)** — Component-based UI
 
 ---
 
-## 📌 How to Run
+## How to Run
 No setup required! Just:
 1. Open the live demo link above, **or**  
 2. Download `poker-analyzer.html` and open it in any modern browser.  
@@ -36,7 +36,7 @@ Everything works instantly—no installation, no build steps.
 
 ---
 
-## 📈 Why This Project
+## Why This Project
 This project demonstrates:
 - Ability to build interactive web applications with JavaScript and React.  
 - Understanding of game logic, probability, and hand evaluation algorithms.  
@@ -44,6 +44,6 @@ This project demonstrates:
 
 ---
 
-## 👨‍💻 Author
+## Author
 **Jayan Jayachandran**  
 [GitHub](https://github.com/Jayan-27) 
