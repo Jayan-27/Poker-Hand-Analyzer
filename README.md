@@ -5,11 +5,6 @@ Analyze poker hands, estimate equity, and get actionable advice for preflop and 
 
 ---
 
-## Live Demo
-Check it out live here: [Poker Hand Analyzer](https://fastidious-bienenstitch-0e9439.netlify.app/}
-
----
-
 ## Features
 - **Interactive Card Selection:** Select your 2 hole cards and up to 5 community cards with a visual interface.  
 - **Hand Evaluation:** Automatically determines hand strength (High Card → Straight Flush).  
