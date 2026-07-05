@@ -6,7 +6,7 @@ Analyze poker hands, estimate equity, and get actionable advice for preflop and 
 ---
 
 ## Live Demo
-Check it out live here: [Poker Hand Analyzer](file:///Users/johndoe/Downloads/poker-analyzer.html)
+Check it out live here: [Poker Hand Analyzer](https://fastidious-bienenstitch-0e9439.netlify.app/}
 
 ---
 
