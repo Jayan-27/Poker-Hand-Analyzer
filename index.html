@@ -1,612 +1,1029 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Hand Analyzer</title>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-        }
-        #root {
-            min-height: 100vh;
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hold'em Equity Lab</title>
+<meta name="description" content="Texas Hold'em equity calculator: bit-mask 7-card evaluator, exact enumeration, seeded Monte Carlo with confidence intervals, villain range modeling, and next-card equity maps.">
+<style>
+:root{
+  --bg:#0c110f; --panel:#131a17; --panel2:#18221e; --line:#24312b; --line2:#2e3d36;
+  --text:#e7eee9; --muted:#8a9e95; --faint:#5d7068;
+  --accent:#3ccf8e; --accent-d:#2a9c69; --gold:#f2c14e; --bad:#ef6b6b;
+  --card:#fbfaf6; --red:#cf2e2e; --black:#161616; --blue:#1f5fd6; --green:#167a3c;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark}
+body{background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1220px;margin:0 auto;padding:28px 16px 56px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+header h1{font-size:24px;letter-spacing:-.02em;font-weight:700}
+header h1 span{color:var(--accent)}
+header p{color:var(--muted);max-width:640px;margin-top:4px}
+.toggle{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;cursor:pointer;user-select:none}
+.layout{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;margin-top:22px;align-items:start}
+@media (max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.panel h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:650;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel h2 small{text-transform:none;letter-spacing:0;font-weight:500;color:var(--faint);font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.slots{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.sg{display:flex;flex-direction:column;gap:6px}
+.sg .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.sg .cards{display:flex;gap:6px}
+.slot{width:52px;height:72px;border-radius:7px;border:1.5px dashed var(--line2);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:20px;padding:0;transition:border-color .12s,box-shadow .12s}
+.slot:hover{border-color:var(--muted)}
+.slot.filled{border:0}
+.slot.active{border:1.5px solid var(--gold);box-shadow:0 0 0 3px rgba(242,193,78,.18)}
+.slot.filled.active .pcard{box-shadow:0 0 0 2px var(--gold),0 0 0 5px rgba(242,193,78,.18)}
+.pcard{width:52px;height:72px;border-radius:7px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:750;line-height:1;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.pcard .r{font-size:24px}.pcard .s{font-size:19px;margin-top:3px}
+.c0{color:var(--black)}.c1{color:var(--red)}.c2{color:var(--red)}.c3{color:var(--black)}
+body.four .c2{color:var(--blue)} body.four .c3{color:var(--green)}
+.picker{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:4px;margin-top:16px}
+.pk{aspect-ratio:3/4;border-radius:5px;background:var(--card);border:0;font-weight:750;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:0}
+.pk span{font-size:11px}
+.pk:hover:not(:disabled){outline:2px solid var(--gold);outline-offset:1px}
+.pk:disabled{opacity:.13;cursor:not-allowed}
+.quick{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:8px;margin-top:14px}
+@media (max-width:480px){.quick{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+input[type=text],input[type=number],select{background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+input[type=text]{font-family:var(--mono)}
+input:focus,select:focus{outline:2px solid var(--accent-d);outline-offset:0;border-color:transparent}
+.err{color:var(--bad);font-size:12.5px;min-height:18px;margin-top:6px}
+.btn{background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:7px 12px;cursor:pointer;font-size:13px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.pri{background:var(--accent);color:#06140d;border-color:var(--accent);font-weight:650}
+.btn.pri:hover{background:#52dba0}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn.on{border-color:var(--accent);color:var(--accent)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.rg{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:2px;margin-top:12px}
+.rc{aspect-ratio:1;font-size:10px;border:0;border-radius:3px;background:#1b2622;color:#60756c;cursor:pointer;font-family:var(--mono);padding:0;letter-spacing:-.04em}
+.rc.in{background:#2a7a56;color:#eafff3}
+.rc.hero{box-shadow:inset 0 0 0 2px var(--gold)}
+@media (max-width:420px){.rc{font-size:8px}}
+.muted{color:var(--muted)}.faint{color:var(--faint)}.mono{font-family:var(--mono)}
+.big{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.big .eq{font-size:52px;font-weight:750;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+.big .eq small{font-size:24px;color:var(--muted);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line2);border-radius:999px;padding:3px 10px;font-size:12.5px}
+.wtl{display:flex;height:12px;border-radius:999px;overflow:hidden;background:var(--panel2);margin:14px 0 6px}
+.wtl div{height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.legend b{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+.meta{margin-top:12px;font-size:12.5px;color:var(--faint);font-family:var(--mono)}
+.prog{height:3px;background:var(--panel2);border-radius:2px;overflow:hidden;margin-top:12px}
+.prog div{height:100%;background:var(--accent);width:0;transition:width .1s}
+.bars{display:flex;flex-direction:column;gap:5px}
+.bar{display:grid;grid-template-columns:120px minmax(0,1fr) 52px;gap:10px;align-items:center;font-size:12.5px}
+.bar .t{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.bar .t div{height:100%;background:var(--accent-d);border-radius:4px}
+.bar .v{text-align:right;font-family:var(--mono);color:var(--muted)}
+.bar.zero{opacity:.35}
+.nc{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:3px}
+.ncc{border-radius:4px;padding:4px 0 3px;text-align:center;font-size:11px;line-height:1.15;background:var(--panel2);min-width:0}
+.ncc .k{font-weight:700}
+.ncc .e{font-family:var(--mono);font-size:9.5px;color:#d7e2dc}
+.ncc.dead{background:transparent;opacity:.25}
+@media (max-width:480px){.ncc .e{font-size:8px}}
+.verdict{border-radius:9px;padding:12px 14px;border:1px solid var(--line2);background:var(--panel2)}
+.verdict.good{border-color:rgba(60,207,142,.45);background:rgba(60,207,142,.08)}
+.verdict.bad{border-color:rgba(239,107,107,.45);background:rgba(239,107,107,.07)}
+.verdict.mid{border-color:rgba(242,193,78,.45);background:rgba(242,193,78,.07)}
+.verdict h3{font-size:16px;margin-bottom:4px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px}
+.kv div{background:var(--panel2);border-radius:8px;padding:8px 10px}
+.kv span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.kv b{font-family:var(--mono);font-size:15px;font-weight:600}
+.empty{color:var(--muted);padding:28px 0;text-align:center}
+.note{font-size:12px;color:var(--faint);margin-top:10px}
+footer{margin-top:22px;color:var(--faint);font-size:12.5px;display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+footer details summary{cursor:pointer}
+footer pre{margin-top:8px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--muted)}
+.ok{color:var(--accent)}
+</style>
 </head>
 <body>
-    <div id="root"></div>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Hold'em <span>Equity Lab</span></h1>
+      <p>Exact enumeration and seeded Monte Carlo equity against weighted villain ranges, built on a bit-mask 7-card evaluator running in a Web Worker.</p>
+    </div>
+    <label class="toggle"><input type="checkbox" id="fourColor"> 4-color deck</label>
+  </header>
 
-    <script type="text/babel">
-        const { useState } = React;
-        
-        const SUITS = ['♠', '♥', '♦', '♣'];
-        const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+  <div class="layout">
+    <div class="col">
+      <section class="panel">
+        <h2>Cards <small id="activeHint"></small></h2>
+        <div class="slots" id="slots"></div>
+        <div class="picker" id="picker"></div>
+        <div class="quick">
+          <div class="field"><label for="qHero">Hero</label><input type="text" id="qHero" placeholder="AhKh" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="qBoard">Board</label><input type="text" id="qBoard" placeholder="Qh Jh 2c" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <div class="err" id="cardErr"></div>
+        <div class="row">
+          <button class="btn" id="btnRandom">Random hand</button>
+          <button class="btn" id="btnStreet">Deal next street</button>
+          <button class="btn" id="btnClear">Clear</button>
+        </div>
+      </section>
 
-        const PokerAnalyzer = () => {
-          const [holeCards, setHoleCards] = useState([]);
-          const [communityCards, setCommunityCards] = useState([]);
-          const [position, setPosition] = useState('BTN');
-          const [action, setAction] = useState('raise');
-          const [potSize, setPotSize] = useState(100);
-          const [betSize, setBetSize] = useState(50);
-          const [analysis, setAnalysis] = useState(null);
-          const [showCardSelector, setShowCardSelector] = useState(null);
+      <section class="panel">
+        <h2>Villain range <small id="rangeSize"></small></h2>
+        <div class="grid2">
+          <div class="field"><label for="opps">Opponents</label>
+            <select id="opps"></select></div>
+          <div class="field"><label for="rangePct">Top <span id="pctLbl">100</span>% of hands</label>
+            <input type="range" id="rangePct" min="1" max="100" step="1" value="100"></div>
+        </div>
+        <div class="row" style="margin-top:12px" id="presets"></div>
+        <div class="rg" id="rangeGrid"></div>
+        <p class="note">Hands are ordered by all-in equity vs. a random hand (computed at load, cached). Click cells to build a custom range. Gold outline = your hand.</p>
+      </section>
 
-          const addCard = (rank, suit, type) => {
-            const card = { rank, suit };
-            if (type === 'hole') {
-              if (holeCards.length < 2) {
-                setHoleCards([...holeCards, card]);
-              }
-            } else {
-              if (communityCards.length < 5) {
-                setCommunityCards([...communityCards, card]);
-              }
-            }
-            setShowCardSelector(null);
-          };
+      <section class="panel">
+        <h2>Situation</h2>
+        <div class="grid2">
+          <div class="field"><label for="pos">Your position</label>
+            <select id="pos"><option>UTG</option><option>MP</option><option>CO</option><option selected>BTN</option><option>SB</option><option>BB</option></select></div>
+          <div class="field"><label for="pot">Pot incl. bet ($)</label><input type="number" id="pot" min="0" step="1" value="100"></div>
+          <div class="field"><label for="call">To call ($)</label><input type="number" id="call" min="0" step="1" value="50"></div>
+          <div class="field"><label for="iters">MC trials</label>
+            <select id="iters"><option value="10000">10k</option><option value="50000" selected>50k</option><option value="200000">200k</option><option value="1000000">1M</option></select></div>
+          <div class="field"><label for="seed">RNG seed</label><input type="number" id="seed" step="1" value="42"></div>
+        </div>
+      </section>
+    </div>
 
-          const removeCard = (index, type) => {
-            if (type === 'hole') {
-              setHoleCards(holeCards.filter((_, i) => i !== index));
-            } else {
-              setCommunityCards(communityCards.filter((_, i) => i !== index));
-            }
-          };
+    <div class="col">
+      <section class="panel" id="equityPanel">
+        <h2>Equity <small id="method"></small></h2>
+        <div id="equityBody"><div class="empty">Pick two hole cards to start.</div></div>
+        <div class="prog"><div id="progBar"></div></div>
+      </section>
+      <section class="panel" id="decisionPanel" hidden>
+        <h2>Decision</h2>
+        <div id="decisionBody"></div>
+      </section>
+      <section class="panel" id="nextPanel" hidden>
+        <h2><span id="nextTitle">Next card</span> <small id="nextSummary"></small></h2>
+        <div class="nc" id="nextGrid"></div>
+        <p class="note">Your equity after each possible next card. Green = card helps you, red = card hurts, relative to your current equity.</p>
+      </section>
+      <section class="panel" id="distPanel" hidden>
+        <h2>Your hand at showdown</h2>
+        <div class="bars" id="distBars"></div>
+      </section>
+      <section class="panel" id="preflopPanel" hidden>
+        <h2>Preflop</h2>
+        <div id="preflopBody"></div>
+      </section>
+    </div>
+  </div>
 
-          const analyzeHand = () => {
-            if (holeCards.length !== 2) {
-              alert('Please select exactly 2 hole cards');
-              return;
-            }
+  <footer>
+    <details><summary id="testSummary">Evaluator self-test: running…</summary><pre id="testDetail"></pre></details>
+    <span id="engineInfo"></span>
+  </footer>
+</div>
 
-            const handStrength = evaluateHand([...holeCards, ...communityCards]);
-            const equity = calculateEquity(holeCards, communityCards);
-            const actionAnalysis = analyzeAction(holeCards, communityCards, position, action, potSize, betSize);
-            const preflopAdvice = getPreflopStrategy(holeCards, position);
+<script>
+// ENGINE-START
+/**
+ * PokerEngine — pure, dependency-free hand evaluation and equity math.
+ * Runs on the main thread (for tests/fallback) and inside a Web Worker.
+ *
+ * Card encoding: integer 0..51, card = rank * 4 + suit
+ *   rank 0..12 = 2..A, suit 0..3 = spades, hearts, diamonds, clubs.
+ *
+ * Hand score: one 24-bit integer, larger = better, so hands compare with > / ===.
+ *   bits 20-23  category (0 high card ... 8 straight flush)
+ *   bits 0-19   up to five 4-bit tiebreak ranks, most significant first
+ */
+function PokerEngine() {
+  const RANK_CHARS = '23456789TJQKA';
+  const SUIT_CHARS = 'shdc';
+  const SUIT_SYMBOLS = ['♠', '♥', '♦', '♣'];
+  const RANK_NAMES = ['Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Jack','Queen','King','Ace'];
+  const RANK_PLURAL = ['Twos','Threes','Fours','Fives','Sixes','Sevens','Eights','Nines','Tens','Jacks','Queens','Kings','Aces'];
+  const CATEGORY_NAMES = ['High Card','One Pair','Two Pair','Three of a Kind','Straight','Flush','Full House','Four of a Kind','Straight Flush'];
 
-            setAnalysis({
-              handStrength,
-              equity,
-              actionAnalysis,
-              preflopAdvice
-            });
-          };
+  const makeCard = (r, s) => (r << 2) | s;
+  const rankOf = c => c >> 2;
+  const suitOf = c => c & 3;
+  const cardToString = c => RANK_CHARS[rankOf(c)] + SUIT_CHARS[suitOf(c)];
 
-          const reset = () => {
-            setHoleCards([]);
-            setCommunityCards([]);
-            setAnalysis(null);
-          };
+  /** Parse "AhKd", "Ah Kd", "10h", "A♥" etc. Returns {cards, error}. Rejects duplicates. */
+  function parseCards(str) {
+    const s = String(str || '').replace(/[\s,]+/g, '');
+    const re = /(10|[2-9tjqka])([shdc♠♥♦♣])/gi;
+    const sym = { '♠': 's', '♥': 'h', '♦': 'd', '♣': 'c' };
+    const cards = [];
+    let idx = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index !== idx) return { cards: [], error: `Can't read "${s.slice(idx, m.index)}"` };
+      const r = RANK_CHARS.indexOf(m[1] === '10' ? 'T' : m[1].toUpperCase());
+      const su = SUIT_CHARS.indexOf(sym[m[2]] || m[2].toLowerCase());
+      const c = makeCard(r, su);
+      if (cards.includes(c)) return { cards: [], error: `${cardToString(c)} appears twice` };
+      cards.push(c);
+      idx = re.lastIndex;
+    }
+    if (idx !== s.length) return { cards: [], error: `Can't read "${s.slice(idx)}"` };
+    return { cards, error: null };
+  }
 
-          const CardSelector = ({ type }) => (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 50
-            }}>
-              <div style={{
-                backgroundColor: 'white',
-                padding: '24px',
-                borderRadius: '8px',
-                maxWidth: '500px',
-                maxHeight: '80vh',
-                overflow: 'auto'
-              }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Select a Card</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
-                  {SUITS.map(suit => (
-                    <div key={suit} style={{ textAlign: 'center' }}>
-                      <div style={{ 
-                        fontSize: '24px', 
-                        color: suit === '♥' || suit === '♦' ? '#dc2626' : 'black' 
-                      }}>
-                        {suit}
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '4px' }}>
-                        {RANKS.map(rank => (
-                          <button
-                            key={`${rank}${suit}`}
-                            onClick={() => addCard(rank, suit, type)}
-                            style={{
-                              padding: '4px 8px',
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '14px'
-                            }}
-                            onMouseOver={(e) => e.target.style.backgroundColor = '#2563eb'}
-                            onMouseOut={(e) => e.target.style.backgroundColor = '#3b82f6'}
-                          >
-                            {rank}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setShowCardSelector(null)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 16px',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#4b5563'}
-                  onMouseOut={(e) => e.target.style.backgroundColor = '#6b7280'}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          );
+  // ---- Lookup tables over 13-bit rank masks (8192 entries) ----
+  const POPCOUNT = new Uint8Array(8192);
+  const STRAIGHT_HIGH = new Int8Array(8192);       // high rank of best straight in mask, or -1
+  for (let m = 1; m < 8192; m++) POPCOUNT[m] = POPCOUNT[m >> 1] + (m & 1);
+  for (let m = 0; m < 8192; m++) {
+    let h = -1;
+    for (let top = 12; top >= 4; top--) if (((m >> (top - 4)) & 31) === 31) { h = top; break; }
+    if (h < 0 && (m & 0x100F) === 0x100F) h = 3;   // wheel A-2-3-4-5, five-high
+    STRAIGHT_HIGH[m] = h;
+  }
 
-          const CardDisplay = ({ card, onRemove }) => (
-            <div
-              onClick={onRemove}
-              style={{
-                position: 'relative',
-                width: '64px',
-                height: '96px',
-                backgroundColor: 'white',
-                border: '2px solid #1f2937',
-                borderRadius: '4px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
-            >
-              <div style={{ 
-                fontSize: '32px', 
-                fontWeight: 'bold',
-                color: card.suit === '♥' || card.suit === '♦' ? '#dc2626' : 'black' 
-              }}>
-                {card.rank}
-              </div>
-              <div style={{ 
-                fontSize: '24px',
-                color: card.suit === '♥' || card.suit === '♦' ? '#dc2626' : 'black' 
-              }}>
-                {card.suit}
-              </div>
-            </div>
-          );
+  /** Pack the n highest set ranks of mask into 4-bit nibbles (most significant first). */
+  function topRanks(mask, n) {
+    let v = 0, k = 0;
+    for (let r = 12; r >= 0 && k < n; r--) if ((mask >> r) & 1) { v = (v << 4) | r; k++; }
+    while (k < n) { v <<= 4; k++; }
+    return v;
+  }
 
-          return (
-            <div style={{
-              minHeight: '100vh',
-              background: 'linear-gradient(to bottom right, #065f46, #064e3b)',
-              padding: '32px'
-            }}>
-              <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-                <h1 style={{ 
-                  fontSize: '36px', 
-                  fontWeight: 'bold', 
-                  color: 'white', 
-                  marginBottom: '8px', 
-                  textAlign: 'center' 
-                }}>
-                  Poker Hand Analyzer
-                </h1>
-                <p style={{ color: '#a7f3d0', textAlign: 'center', marginBottom: '32px' }}>
-                  GTO Strategy Analysis Tool
-                </p>
+  const cnt = new Uint8Array(13);
+  /** Best 5-card score from the first n (2..7) cards of the array. No allocation. */
+  function evaluate(cards, n) {
+    cnt.fill(0);
+    let s0 = 0, s1 = 0, s2 = 0, s3 = 0, rm = 0;
+    for (let i = 0; i < n; i++) {
+      const c = cards[i], r = c >> 2, b = 1 << r;
+      cnt[r]++; rm |= b;
+      switch (c & 3) { case 0: s0 |= b; break; case 1: s1 |= b; break; case 2: s2 |= b; break; default: s3 |= b; }
+    }
+    // With <= 7 cards a flush can't coexist with quads or a full house, so checking it first is safe.
+    const fm = POPCOUNT[s0] >= 5 ? s0 : POPCOUNT[s1] >= 5 ? s1 : POPCOUNT[s2] >= 5 ? s2 : POPCOUNT[s3] >= 5 ? s3 : 0;
+    if (fm) {
+      const sh = STRAIGHT_HIGH[fm];               // straight must be within the flush suit
+      return sh >= 0 ? (8 << 20) | (sh << 16) : (5 << 20) | topRanks(fm, 5);
+    }
+    let quad = -1, t1 = -1, t2 = -1, p1 = -1, p2 = -1;
+    for (let r = 12; r >= 0; r--) {
+      const k = cnt[r];
+      if (k === 4) quad = r;
+      else if (k === 3) { if (t1 < 0) t1 = r; else if (t2 < 0) t2 = r; }
+      else if (k === 2) { if (p1 < 0) p1 = r; else if (p2 < 0) p2 = r; }
+    }
+    if (quad >= 0) return (7 << 20) | (quad << 16) | (topRanks(rm & ~(1 << quad), 1) << 12);
+    if (t1 >= 0 && (t2 >= 0 || p1 >= 0)) return (6 << 20) | (t1 << 16) | (Math.max(t2, p1) << 12);
+    const sh = STRAIGHT_HIGH[rm];
+    if (sh >= 0) return (4 << 20) | (sh << 16);
+    if (t1 >= 0) return (3 << 20) | (t1 << 16) | (topRanks(rm & ~(1 << t1), 2) << 8);
+    if (p2 >= 0) return (2 << 20) | (p1 << 16) | (p2 << 12) | (topRanks(rm & ~(1 << p1) & ~(1 << p2), 1) << 8);
+    if (p1 >= 0) return (1 << 20) | (p1 << 16) | (topRanks(rm & ~(1 << p1), 3) << 4);
+    return topRanks(rm, 5);
+  }
 
-                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
-                    Your Hole Cards
-                  </h2>
-                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {holeCards.map((card, i) => (
-                      <CardDisplay key={i} card={card} onRemove={() => removeCard(i, 'hole')} />
-                    ))}
-                    {holeCards.length < 2 && (
-                      <button
-                        onClick={() => setShowCardSelector('hole')}
-                        style={{
-                          width: '64px',
-                          height: '96px',
-                          border: '2px dashed white',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'white',
-                          fontSize: '32px',
-                          backgroundColor: 'transparent',
-                          cursor: 'pointer'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                      >
-                        +
-                      </button>
-                    )}
-                  </div>
-                </div>
+  const categoryOf = score => score >> 20;
+  function describe(score) {
+    const k = i => (score >> (16 - 4 * i)) & 15;
+    switch (score >> 20) {
+      case 8: return k(0) === 12 ? 'Royal Flush' : `Straight Flush, ${RANK_NAMES[k(0)]}-high`;
+      case 7: return `Four ${RANK_PLURAL[k(0)]}`;
+      case 6: return `Full House, ${RANK_PLURAL[k(0)]} full of ${RANK_PLURAL[k(1)]}`;
+      case 5: return `Flush, ${RANK_NAMES[k(0)]}-high`;
+      case 4: return `Straight, ${RANK_NAMES[k(0)]}-high`;
+      case 3: return `Three ${RANK_PLURAL[k(0)]}`;
+      case 2: return `Two Pair, ${RANK_PLURAL[k(0)]} and ${RANK_PLURAL[k(1)]}`;
+      case 1: return `Pair of ${RANK_PLURAL[k(0)]}`;
+      default: return `${RANK_NAMES[k(0)]}-high`;
+    }
+  }
 
-                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
-                    Community Cards
-                  </h2>
-                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {communityCards.map((card, i) => (
-                      <CardDisplay key={i} card={card} onRemove={() => removeCard(i, 'community')} />
-                    ))}
-                    {communityCards.length < 5 && (
-                      <button
-                        onClick={() => setShowCardSelector('community')}
-                        style={{
-                          width: '64px',
-                          height: '96px',
-                          border: '2px dashed white',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'white',
-                          fontSize: '32px',
-                          backgroundColor: 'transparent',
-                          cursor: 'pointer'
-                        }}
-                        onMouseOver={(e) => e.target.style.backgroundColor = '#059669'}
-                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                      >
-                        +
-                      </button>
-                    )}
-                  </div>
-                </div>
+  /** Small, fast, seedable PRNG so every Monte Carlo run is reproducible. */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
-                <div style={{ backgroundColor: '#047857', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', marginBottom: '16px' }}>
-                    Situation
-                  </h2>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                    <div>
-                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Position</label>
-                      <select
-                        value={position}
-                        onChange={(e) => setPosition(e.target.value)}
-                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
-                      >
-                        <option value="UTG">UTG (Early)</option>
-                        <option value="MP">MP (Middle)</option>
-                        <option value="CO">CO (Cutoff)</option>
-                        <option value="BTN">BTN (Button)</option>
-                        <option value="SB">SB (Small Blind)</option>
-                        <option value="BB">BB (Big Blind)</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Action</label>
-                      <select
-                        value={action}
-                        onChange={(e) => setAction(e.target.value)}
-                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
-                      >
-                        <option value="fold">Fold</option>
-                        <option value="call">Call</option>
-                        <option value="raise">Raise</option>
-                        <option value="check">Check</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Pot Size ($)</label>
-                      <input
-                        type="number"
-                        value={potSize}
-                        onChange={(e) => setPotSize(Number(e.target.value))}
-                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', color: 'white', marginBottom: '8px' }}>Bet Size ($)</label>
-                      <input
-                        type="number"
-                        value={betSize}
-                        onChange={(e) => setBetSize(Number(e.target.value))}
-                        style={{ width: '100%', padding: '8px 16px', borderRadius: '4px', border: 'none' }}
-                      />
-                    </div>
-                  </div>
-                </div>
+  // ---- 169 starting-hand classes (13x13 grid: pairs on diagonal, suited above, offsuit below) ----
+  const CLASSES = [];
+  const CLASS_BY_LABEL = {};
+  for (let row = 0; row < 13; row++) for (let col = 0; col < 13; col++) {
+    const ri = 12 - row, rj = 12 - col;
+    let label, combos = [];
+    if (row === col) {
+      label = RANK_CHARS[ri] + RANK_CHARS[ri];
+      for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) combos.push([makeCard(ri, a), makeCard(ri, b)]);
+    } else if (row < col) {
+      label = RANK_CHARS[ri] + RANK_CHARS[rj] + 's';
+      for (let s = 0; s < 4; s++) combos.push([makeCard(ri, s), makeCard(rj, s)]);
+    } else {
+      label = RANK_CHARS[rj] + RANK_CHARS[ri] + 'o';
+      for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) if (a !== b) combos.push([makeCard(rj, a), makeCard(ri, b)]);
+    }
+    const cls = { label, row, col, combos };
+    CLASSES.push(cls); CLASS_BY_LABEL[label] = cls;
+  }
+  function classOf(c1, c2) {
+    const r1 = rankOf(c1), r2 = rankOf(c2), hi = Math.max(r1, r2), lo = Math.min(r1, r2);
+    if (hi === lo) return RANK_CHARS[hi] + RANK_CHARS[hi];
+    return RANK_CHARS[hi] + RANK_CHARS[lo] + (suitOf(c1) === suitOf(c2) ? 's' : 'o');
+  }
 
-                <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={analyzeHand}
-                    style={{
-                      flex: 1,
-                      minWidth: '200px',
-                      backgroundColor: '#eab308',
-                      color: 'black',
-                      fontWeight: 'bold',
-                      padding: '16px 32px',
-                      borderRadius: '8px',
-                              fontSize: '20px',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => e.target.style.backgroundColor = '#ca8a04'}
-                    onMouseOut={(e) => e.target.style.backgroundColor = '#eab308'}
-                  >
-                    Analyze Hand
-                  </button>
-                  <button
-                    onClick={reset}
-                    style={{
-                      backgroundColor: '#4b5563',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      padding: '16px 32px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => e.target.style.backgroundColor = '#374151'}
-                    onMouseOut={(e) => e.target.style.backgroundColor = '#4b5563'}
-                  >
-                    Reset
-                  </button>
-                </div>
+  /** Flatten a list of class labels into [a0,b0,a1,b1,...] hole-card combos. */
+  function buildRange(labels) {
+    const out = [];
+    for (const l of labels) { const cls = CLASS_BY_LABEL[l]; if (cls) for (const [a, b] of cls.combos) out.push(a, b); }
+    return out;
+  }
+  function liveCombos(range, dead) {
+    const out = [];
+    if (range) { for (let i = 0; i < range.length; i += 2) if (!dead[range[i]] && !dead[range[i + 1]]) out.push(range[i], range[i + 1]); }
+    else { for (let a = 0; a < 52; a++) if (!dead[a]) for (let b = a + 1; b < 52; b++) if (!dead[b]) out.push(a, b); }
+    return out;
+  }
+  function deadMask(hero, board) {
+    const dead = new Uint8Array(52);
+    for (const c of hero) dead[c] = 1;
+    for (const c of board) dead[c] = 1;
+    return dead;
+  }
 
-                {analysis && (
-                  <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '24px' }}>
-                    <h2 style={{ fontSize: '32px', fontWeight: 'bold', color: '#1f2937', marginBottom: '24px' }}>
-                      Analysis Results
-                    </h2>
-
-                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
-                        Hand Strength
-                      </h3>
-                      <p style={{ fontSize: '24px', fontWeight: 'bold', color: '#059669' }}>
-                        {analysis.handStrength.name}
-                      </p>
-                      <p style={{ color: '#6b7280' }}>Rank: {analysis.handStrength.rank}</p>
-                    </div>
-
-                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
-                        Estimated Equity
-                      </h3>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <div style={{ 
-                          flex: 1, 
-                          backgroundColor: '#e5e7eb', 
-                          borderRadius: '9999px', 
-                          height: '32px',
-                          position: 'relative'
-                        }}>
-                          <div
-                            style={{
-                              backgroundColor: '#10b981',
-                              height: '32px',
-                              borderRadius: '9999px',
-                              width: `${analysis.equity}%`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: 'white',
-                              fontWeight: 'bold',
-                              minWidth: '60px'
-                            }}
-                          >
-                            {analysis.equity.toFixed(1)}%
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div style={{ borderBottom: '1px solid #e5e7eb', paddingBottom: '16px', marginBottom: '24px' }}>
-                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
-                        Action Analysis
-                      </h3>
-                      <div style={{
-                        padding: '16px',
-                        borderRadius: '4px',
-                        backgroundColor: 
-                          analysis.actionAnalysis.recommendation === 'Good' ? '#d1fae5' :
-                          analysis.actionAnalysis.recommendation === 'Questionable' ? '#fef3c7' : '#fee2e2'
-                      }}>
-                        <p style={{ fontWeight: 'bold', fontSize: '18px', marginBottom: '8px' }}>
-                          {analysis.actionAnalysis.recommendation}
-                        </p>
-                        <p style={{ color: '#374151' }}>{analysis.actionAnalysis.reason}</p>
-                        <p style={{ color: '#6b7280', marginTop: '8px', fontSize: '14px' }}>
-                          Pot Odds: {analysis.actionAnalysis.potOdds.toFixed(1)}%
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151', marginBottom: '8px' }}>
-                        Preflop Strategy
-                      </h3>
-                      <div style={{ backgroundColor: '#dbeafe', padding: '16px', borderRadius: '4px' }}>
-                        <p style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-                          {analysis.preflopAdvice.category}
-                        </p>
-                        <p style={{ color: '#374151' }}>{analysis.preflopAdvice.advice}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {showCardSelector && <CardSelector type={showCardSelector} />}
-            </div>
-          );
-        };
-
-        const evaluateHand = (cards) => {
-          if (cards.length < 5) {
-            return { name: 'Incomplete Hand', rank: 0 };
+  /**
+   * Exact equity, heads-up, by enumerating every live villain combo x every runout.
+   * Flop: ~1,000 combos x 990 runouts. Hero scores are cached per runout.
+   */
+  function enumerate(hero, board, range, onProgress) {
+    const dead = deadMask(hero, board);
+    const combos = liveCombos(range, dead);
+    if (!combos.length) throw new Error('Villain range has no live combos with these cards.');
+    const rest = [];
+    for (let c = 0; c < 52; c++) if (!dead[c]) rest.push(c);
+    const nb = board.length, need = 5 - nb;
+    const H = new Int32Array(7), V = new Int32Array(7);
+    H[0] = hero[0]; H[1] = hero[1];
+    for (let i = 0; i < nb; i++) { H[2 + i] = board[i]; V[2 + i] = board[i]; }
+    const cache = new Int32Array(52 * 52).fill(-1);
+    const cat = new Float64Array(9);
+    let eq = 0, w = 0, t = 0, total = 0;
+    const tally = (hs, vs) => {
+      if (hs > vs) { w++; eq += 1; } else if (hs === vs) { t++; eq += 0.5; }
+      cat[hs >> 20]++; total++;
+    };
+    const nCombos = combos.length / 2;
+    for (let ci = 0; ci < combos.length; ci += 2) {
+      const a = combos[ci], b = combos[ci + 1];
+      V[0] = a; V[1] = b;
+      if (need === 0) {
+        let hs = cache[0]; if (hs < 0) hs = cache[0] = evaluate(H, 7);
+        tally(hs, evaluate(V, 7));
+      } else if (need === 1) {
+        for (let i = 0; i < rest.length; i++) {
+          const c = rest[i]; if (c === a || c === b) continue;
+          H[6] = V[6] = c;
+          let hs = cache[c]; if (hs < 0) hs = cache[c] = evaluate(H, 7);
+          tally(hs, evaluate(V, 7));
+        }
+      } else {
+        for (let i = 0; i < rest.length; i++) {
+          const c1 = rest[i]; if (c1 === a || c1 === b) continue;
+          H[5] = V[5] = c1;
+          for (let j = i + 1; j < rest.length; j++) {
+            const c2 = rest[j]; if (c2 === a || c2 === b) continue;
+            H[6] = V[6] = c2;
+            const key = c1 * 52 + c2;
+            let hs = cache[key]; if (hs < 0) hs = cache[key] = evaluate(H, 7);
+            tally(hs, evaluate(V, 7));
           }
+        }
+      }
+      if (onProgress && (ci & 127) === 0) onProgress(ci / 2 / nCombos);
+    }
+    for (let i = 0; i < 9; i++) cat[i] /= total;
+    return { equity: eq / total, win: w / total, tie: t / total, lose: (total - w - t) / total, n: total, se: 0, cat: Array.from(cat), villainCombos: nCombos, exact: true };
+  }
 
-          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
-          const ranks = cards.map(c => rankValues[c.rank]);
-          const suits = cards.map(c => c.suit);
-          
-          const rankCounts = {};
-          ranks.forEach(r => rankCounts[r] = (rankCounts[r] || 0) + 1);
-          
-          const counts = Object.values(rankCounts).sort((a, b) => b - a);
-          const isFlush = suits.some(s => suits.filter(suit => suit === s).length >= 5);
-          
-          const sortedRanks = [...new Set(ranks)].sort((a, b) => b - a);
-          let isStraight = false;
-          for (let i = 0; i <= sortedRanks.length - 5; i++) {
-            if (sortedRanks[i] - sortedRanks[i + 4] === 4) {
-              isStraight = true;
-              break;
-            }
+  /**
+   * Monte Carlo equity vs. N opponents drawn from a range.
+   * Uses an iteration "stamp" array instead of re-shuffling a deck: O(1) reset per trial.
+   * Ties split the pot, so per-trial payoff x is 1, 1/k, or 0; SE = sd(x)/sqrt(n).
+   */
+  function simulate(hero, board, nOpp, range, iterations, seed, onProgress) {
+    const rng = mulberry32(seed >>> 0);
+    const dead = deadMask(hero, board);
+    const combos = range ? liveCombos(range, dead) : null;
+    if (combos && !combos.length) throw new Error('Villain range has no live combos with these cards.');
+    const nc = combos ? combos.length / 2 : 0;
+    const stamp = new Int32Array(52);
+    const nb = board.length, need = 5 - nb;
+    const H = new Int32Array(7), V = new Int32Array(7), opp = new Int32Array(nOpp * 2);
+    H[0] = hero[0]; H[1] = hero[1];
+    for (let i = 0; i < nb; i++) H[2 + i] = board[i];
+    const cat = new Float64Array(9);
+    let sum = 0, sumSq = 0, w = 0, t = 0, n = 0, rejects = 0;
+    const maxAttempts = iterations * 20;
+    const step = Math.max(1, Math.floor(iterations / 50));
+    let it = 0;
+    const draw = () => {
+      for (;;) { const c = (rng() * 52) | 0; if (!dead[c] && stamp[c] !== it) { stamp[c] = it; return c; } }
+    };
+    while (n < iterations && it < maxAttempts) {
+      it++;
+      let ok = true;
+      for (let o = 0; o < nOpp; o++) {
+        if (combos) {
+          let found = false;
+          for (let tries = 0; tries < 64; tries++) {
+            const k = ((rng() * nc) | 0) * 2, a = combos[k], b = combos[k + 1];
+            if (stamp[a] !== it && stamp[b] !== it) { stamp[a] = stamp[b] = it; opp[2 * o] = a; opp[2 * o + 1] = b; found = true; break; }
           }
-          if (sortedRanks.includes(14) && sortedRanks.includes(5) && sortedRanks.includes(4) && sortedRanks.includes(3) && sortedRanks.includes(2)) {
-            isStraight = true;
-          }
+          if (!found) { ok = false; break; }
+        } else { opp[2 * o] = draw(); opp[2 * o + 1] = draw(); }
+      }
+      if (!ok) { rejects++; continue; }
+      for (let k = 0; k < need; k++) H[2 + nb + k] = draw();
+      const hs = evaluate(H, 7);
+      for (let i = 2; i < 7; i++) V[i] = H[i];
+      let best = -1, tied = 0;
+      for (let o = 0; o < nOpp; o++) {
+        V[0] = opp[2 * o]; V[1] = opp[2 * o + 1];
+        const vs = evaluate(V, 7);
+        if (vs > best) { best = vs; tied = vs === hs ? 1 : 0; } else if (vs === best && vs === hs) tied++;
+      }
+      let x;
+      if (hs > best) { x = 1; w++; } else if (hs === best) { x = 1 / (tied + 1); t++; } else x = 0;
+      sum += x; sumSq += x * x; cat[hs >> 20]++; n++;
+      if (onProgress && n % step === 0) onProgress(n / iterations);
+    }
+    if (!n) throw new Error('Could not deal non-conflicting hands from this range. Widen it or use fewer opponents.');
+    const mean = sum / n;
+    for (let i = 0; i < 9; i++) cat[i] /= n;
+    return { equity: mean, win: w / n, tie: t / n, lose: (n - w - t) / n, n, se: Math.sqrt(Math.max(0, sumSq / n - mean * mean) / n), cat: Array.from(cat), rejects, exact: false };
+  }
 
-          if (isStraight && isFlush) return { name: 'Straight Flush', rank: 9 };
-          if (counts[0] === 4) return { name: 'Four of a Kind', rank: 8 };
-          if (counts[0] === 3 && counts[1] >= 2) return { name: 'Full House', rank: 7 };
-          if (isFlush) return { name: 'Flush', rank: 6 };
-          if (isStraight) return { name: 'Straight', rank: 5 };
-          if (counts[0] === 3) return { name: 'Three of a Kind', rank: 4 };
-          if (counts[0] === 2 && counts[1] === 2) return { name: 'Two Pair', rank: 3 };
-          if (counts[0] === 2) return { name: 'One Pair', rank: 2 };
-          return { name: 'High Card', rank: 1 };
-        };
+  function equityFor(hero, board, nOpp, range, iterations, seed, onProgress) {
+    return (nOpp === 1 && board.length >= 3)
+      ? enumerate(hero, board, range, onProgress)
+      : simulate(hero, board, nOpp, range, iterations, seed, onProgress);
+  }
 
-        const calculateEquity = (holeCards, communityCards) => {
-          const handStrength = evaluateHand([...holeCards, ...communityCards]);
-          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
-          
-          let baseEquity = handStrength.rank * 10;
-          
-          const holeRanks = holeCards.map(c => rankValues[c.rank]);
-          const isPair = holeRanks[0] === holeRanks[1];
-          const highCard = Math.max(...holeRanks);
-          
-          if (isPair) baseEquity += 10;
-          if (highCard >= 12) baseEquity += 5;
-          if (holeCards[0].suit === holeCards[1].suit) baseEquity += 3;
-          
-          const cardsToGo = 5 - communityCards.length;
-          if (cardsToGo > 0) baseEquity -= cardsToGo * 2;
-          
-          return Math.min(Math.max(baseEquity, 5), 95);
-        };
+  /** Equity after each possible next card (flop -> turn, turn -> river). */
+  function nextCardMap(hero, board, nOpp, range, seed, perCard, onProgress) {
+    const dead = deadMask(hero, board);
+    const live = [];
+    for (let c = 0; c < 52; c++) if (!dead[c]) live.push(c);
+    const out = [];
+    live.forEach((c, i) => {
+      let equity = null;
+      try { equity = equityFor(hero, board.concat([c]), nOpp, range, perCard, seed + c, null).equity; } catch (e) { /* range fully blocked */ }
+      out.push({ card: c, equity });
+      if (onProgress) onProgress((i + 1) / live.length);
+    });
+    return out;
+  }
 
-        const analyzeAction = (holeCards, communityCards, position, action, potSize, betSize) => {
-          const equity = calculateEquity(holeCards, communityCards);
-          const potOdds = (betSize / (potSize + betSize)) * 100;
-          
-          let recommendation = 'Questionable';
-          let reason = '';
+  /** Full analysis used by the UI. */
+  function analyze(p, onProgress) {
+    const range = p.rangeLabels ? buildRange(p.rangeLabels) : null;
+    const hasMap = p.board.length === 3 || p.board.length === 4;
+    const prog = (lo, hi) => f => onProgress && onProgress(lo + (hi - lo) * f);
+    const t0 = Date.now();
+    const main = equityFor(p.hero, p.board, p.opponents, range, p.iterations, p.seed, prog(0, hasMap ? 0.55 : 1));
+    const mainMs = Date.now() - t0;
+    const perCard = Math.max(2000, Math.min(8000, Math.round(p.iterations / 10)));
+    const next = hasMap ? nextCardMap(p.hero, p.board, p.opponents, range, p.seed, perCard, prog(0.55, 1)) : null;
+    const current = p.board.length >= 3 ? evaluate(p.hero.concat(p.board), 2 + p.board.length) : null;
+    return { main, mainMs, next, current };
+  }
 
-          if (action === 'fold') {
-            if (equity < 30) {
-              recommendation = 'Good';
-              reason = 'Your hand is weak. Folding preserves your chips.';
-            } else {
-              recommendation = 'Bad';
-              reason = 'You have decent equity. Consider calling or raising.';
-            }
-          } else if (action === 'call') {
-            if (equity > potOdds) {
-              recommendation = 'Good';
-              reason = `Your equity (${equity.toFixed(1)}%) exceeds pot odds (${potOdds.toFixed(1)}%). Profitable call.`;
-            } else {
-              recommendation = 'Bad';
-              reason = `Your equity (${equity.toFixed(1)}%) is below pot odds (${potOdds.toFixed(1)}%). Unprofitable call.`;
-            }
-          } else if (action === 'raise') {
-            if (equity > 60) {
-              recommendation = 'Good';
-              reason = 'Strong hand. Raising for value is optimal.';
-            } else if (equity > 40 && ['BTN', 'CO'].includes(position)) {
-              recommendation = 'Good';
-              reason = 'Good position with decent equity. Semi-bluff or value raise.';
-            } else {
-              recommendation = 'Questionable';
-              reason = 'Raising with moderate equity. Be cautious of opponents.';
-            }
-          }
+  /** Rank all 169 classes by heads-up preflop equity vs. a random hand (suit-symmetric, so one combo per class). */
+  function rankStartingHands(iters, seed) {
+    const out = CLASSES.map(cls => {
+      const r = simulate(cls.combos[0], [], 1, null, iters, seed, null);
+      return { label: cls.label, equity: r.equity, combos: cls.combos.length };
+    });
+    out.sort((a, b) => b.equity - a.equity);
+    return out;
+  }
 
-          return { recommendation, reason, potOdds };
-        };
+  /** Smallest set of top-ranked classes covering pct% of the 1326 combos. */
+  function rangeFromPercent(ranking, pct) {
+    const target = (pct / 100) * 1326, set = new Set();
+    let acc = 0;
+    for (const r of ranking) { if (acc >= target - 1e-9) break; set.add(r.label); acc += r.combos; }
+    return set;
+  }
 
-        const getPreflopStrategy = (holeCards, position) => {
-          const rankValues = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 'T': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
-          const ranks = holeCards.map(c => rankValues[c.rank]).sort((a, b) => b - a);
-          const isPair = ranks[0] === ranks[1];
-          const isSuited = holeCards[0].suit === holeCards[1].suit;
-          const highCard = ranks[0];
-          const gap = ranks[0] - ranks[1];
+  function runSelfTests() {
+    const P = s => parseCards(s).cards;
+    const S = s => { const c = P(s); return evaluate(c, c.length); };
+    const results = [];
+    const cat = (name, cards, expectCat, expectDesc) => {
+      const sc = S(cards), ok = categoryOf(sc) === expectCat && (!expectDesc || describe(sc) === expectDesc);
+      results.push({ name, ok, got: describe(sc) });
+    };
+    const cmp = (name, a, b, expect) => {
+      const d = Math.sign(S(a) - S(b));
+      results.push({ name, ok: d === expect, got: d > 0 ? 'A wins' : d < 0 ? 'B wins' : 'tie' });
+    };
+    cat('Royal flush', 'As Ks Qs Js Ts 2c 3d', 8, 'Royal Flush');
+    cat('Steel wheel', 'Ah 2h 3h 4h 5h Kc Kd', 8, 'Straight Flush, Five-high');
+    cat('Straight + flush but not straight flush', '9h 8h 7h 6h 5c 2h Kd', 5, 'Flush, Nine-high');
+    cat('Wheel straight', 'Ah 2c 3d 4s 5h Kc Qd', 4, 'Straight, Five-high');
+    cat('Broadway straight', 'Ah Kd Qc Js Ts 9h 8h', 4, 'Straight, Ace-high');
+    cat('Two trips make a full house', 'Kh Kd Kc 7s 7d 7h 2c', 6, 'Full House, Kings full of Sevens');
+    cat('Quads over a full house', 'Kh Kd Kc Ks 7d 7h 7c', 7, 'Four Kings');
+    cat('Flush beats trips in same 7', 'Ah Kh 2h 3h 9h 9c 9d', 5, 'Flush, Ace-high');
+    cat('Three pairs -> best two', 'Ah Ad Kc Kd Qs Qh 2c', 2, 'Two Pair, Aces and Kings');
+    cat('Hole cards only', 'Ah Ad', 1, 'Pair of Aces');
+    cmp('6-high straight beats wheel', '6c 5d 4h 3s 2c Kd Qh', 'Ac 5d 4h 3s 2c Kd Qh', 1);
+    cmp('Pair kicker decides', 'Ah Ad Kc 7s 4d 3c 2h', 'Ah Ad Qc Js Td 3c 2h', 1);
+    cmp('Two pair: 3rd pair plays as kicker', 'Ah Ad Kc Kd Qs Qh 2c', 'Ah Ad Kc Kd Js 3h 2c', 1);
+    cmp('Board straight plays: chop', '2c 3d Ah Kd Qc Js Tc', '4c 5d Ah Kd Qc Js Tc', 0);
+    cmp('Flush 5th card decides', 'Ah Jh 9h 6h 3h 2c 2d', 'Ah Jh 9h 6h 2h Kc Kd', 1);
+    cmp('Trips rank decides full house', 'Ts Th Tc 2s 2h', '9s 9h 9c As Ah', 1);
+    cmp('Higher quad kicker', 'Ks Kh Kc Kd As 2c 3c', 'Ks Kh Kc Kd Qs 2c 3c', 1);
+    cmp('Kicker beyond 5 cards ignored', 'As Kd Qc Jh 9s 3c 2d', 'As Kd Qc Jh 9s 4c 2d', 0);
+    return results;
+  }
 
-          let category = '';
-          let advice = '';
+  return {
+    RANK_CHARS, SUIT_CHARS, SUIT_SYMBOLS, CATEGORY_NAMES, CLASSES, CLASS_BY_LABEL,
+    makeCard, rankOf, suitOf, cardToString, parseCards, evaluate, describe, categoryOf,
+    classOf, buildRange, enumerate, simulate, equityFor, nextCardMap, analyze,
+    rankStartingHands, rangeFromPercent, runSelfTests, mulberry32
+  };
+}
 
-          if (isPair && highCard >= 10) {
-            category = 'Premium Pair';
-            advice = 'Raise from any position. Consider 3-betting if facing a raise.';
-          } else if (isPair) {
-            category = 'Small/Medium Pair';
-            advice = 'Raise from late position. Call from early/middle if pot odds are good for set mining.';
-          } else if (highCard === 14 && ranks[1] >= 10) {
-            category = 'Strong Broadway';
-            advice = 'Raise from any position. Strong hand with good postflop playability.';
-          } else if (isSuited && gap <= 4 && highCard >= 9) {
-            category = 'Suited Connector/Gapper';
-            advice = 'Raise from late position. Call from middle position. Fold from early unless very deep stacked.';
-          } else if (highCard >= 11 && ranks[1] >= 9) {
-            category = 'Broadway Cards';
-            advice = 'Raise from cutoff/button. Call from middle position. Fold from early unless suited.';
-          } else {
-            category = 'Marginal Hand';
-            advice = 'Fold from early position. Consider calling from late position if cheap. Position matters significantly.';
-          }
+/** Worker entry point; receives the engine instance and the worker global. */
+function workerMain(E, scope) {
+  scope.onmessage = function (e) {
+    const m = e.data;
+    try {
+      if (m.type === 'rank') {
+        scope.postMessage({ type: 'ranking', ranking: E.rankStartingHands(m.iters, m.seed) });
+      } else if (m.type === 'analyze') {
+        let last = 0;
+        const t0 = Date.now();
+        const res = E.analyze(m.payload, f => {
+          if (f - last > 0.02 || f >= 1) { last = f; scope.postMessage({ type: 'progress', id: m.id, f }); }
+        });
+        scope.postMessage({ type: 'result', id: m.id, res, ms: Date.now() - t0 });
+      }
+    } catch (err) {
+      scope.postMessage({ type: 'error', id: m.id, message: String((err && err.message) || err) });
+    }
+  };
+}
+// ENGINE-END
+</script>
 
-          const positionAdvice = {
-            'UTG': 'Play tight from early position. Only premium hands.',
-            'MP': 'Slightly wider range than UTG. Still play relatively tight.',
-            'CO': 'Start widening range. Good stealing position.',
-            'BTN': 'Widest range. You have position postflop.',
-            'SB': 'Tricky spot. Consider folding marginal hands to avoid playing OOP.',
-            'BB': 'You have pot odds to defend. Wider calling range.'
-          };
+<script>
+(function () {
+  const E = PokerEngine();
+  const $ = id => document.getElementById(id);
+  const RANK_DISPLAY = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+  const SYM = E.SUIT_SYMBOLS;
+  const SLOT_ORDER = [['hero',0],['hero',1],['board',0],['board',1],['board',2],['board',3],['board',4]];
+  // Approximate 6-max, 100bb opening frequencies (BB = defend vs. a button open).
+  const POS = { UTG: 15, MP: 19, CO: 27, BTN: 45, SB: 40, BB: 55 };
+  const PRESETS = [['Any two', 100], ['UTG open', 15], ['CO open', 27], ['BTN open', 45], ['3-bet', 6]];
+  const RANK_CACHE_KEY = 'hel-ranking-v1';
 
-          advice += ` Position note: ${positionAdvice[position]}`;
+  const state = {
+    hero: [null, null], board: [null, null, null, null, null], active: ['hero', 0],
+    opponents: 1, rangePct: 100, pot: 100, toCall: 50, position: 'BTN', iterations: 50000, seed: 42
+  };
+  let customRange = null;           // Set of labels when user hand-edits the grid
+  let ranking = null, cumPct = {}, rankIdx = {};
+  let lastEquity = null;
 
-          return { category, advice };
-        };
+  // ---------- helpers ----------
+  const fmtInt = n => Math.round(n).toLocaleString('en-US');
+  const pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+  const money = x => (x < 0 ? '-$' : '$') + Math.abs(x).toFixed(2);
+  const usedCards = () => new Set([...state.hero, ...state.board].filter(c => c != null));
+  const boardCards = () => state.board.filter(c => c != null);
+  const face = c => `<span class="pcard c${E.suitOf(c)}"><span class="r">${RANK_DISPLAY[E.rankOf(c)]}</span><span class="s">${SYM[E.suitOf(c)]}</span></span>`;
+  const short = c => `<span class="c${E.suitOf(c)}">${RANK_DISPLAY[E.rankOf(c)]}${SYM[E.suitOf(c)]}</span>`;
 
-        ReactDOM.render(<PokerAnalyzer />, document.getElementById('root'));
-    </script>
+  function currentRange() {
+    if (customRange) return { set: customRange, ready: true };
+    if (state.rangePct >= 100) return { set: null, ready: true };
+    if (!ranking) return { set: null, ready: false };
+    return { set: E.rangeFromPercent(ranking, state.rangePct), ready: true };
+  }
+  function rangeCombos(set) {
+    if (!set) return 1326;
+    let n = 0; for (const l of set) n += E.CLASS_BY_LABEL[l].combos.length; return n;
+  }
+
+  // ---------- rendering: inputs ----------
+  function renderSlots() {
+    const slot = (zone, i) => {
+      const c = state[zone][i];
+      const act = state.active && state.active[0] === zone && state.active[1] === i;
+      return `<button class="slot ${c != null ? 'filled' : ''} ${act ? 'active' : ''}" data-zone="${zone}" data-i="${i}" aria-label="${zone} card ${i + 1}">${c != null ? face(c) : '+'}</button>`;
+    };
+    const group = (lbl, zone, idxs) => `<div class="sg"><span class="lbl">${lbl}</span><div class="cards">${idxs.map(i => slot(zone, i)).join('')}</div></div>`;
+    $('slots').innerHTML = group('Hero', 'hero', [0, 1]) + group('Flop', 'board', [0, 1, 2]) + group('Turn', 'board', [3]) + group('River', 'board', [4]);
+    const a = state.active;
+    $('activeHint').textContent = a ? `placing ${a[0] === 'hero' ? 'hero card ' + (a[1] + 1) : ['flop', 'flop', 'flop', 'turn', 'river'][a[1]]} · click a card to clear it` : 'click a slot to edit';
+  }
+  function renderPicker() {
+    const used = usedCards();
+    let html = '';
+    for (let s = 0; s < 4; s++) for (let r = 12; r >= 0; r--) {
+      const c = E.makeCard(r, s);
+      html += `<button class="pk c${s}" data-card="${c}" ${used.has(c) ? 'disabled' : ''} aria-label="${E.cardToString(c)}">${RANK_DISPLAY[r]}<span>${SYM[s]}</span></button>`;
+    }
+    $('picker').innerHTML = html;
+  }
+  function syncQuick() {
+    const toStr = arr => arr.filter(c => c != null).map(E.cardToString).join(' ');
+    if (document.activeElement !== $('qHero')) $('qHero').value = toStr(state.hero);
+    if (document.activeElement !== $('qBoard')) $('qBoard').value = toStr(state.board);
+  }
+  function renderRange() {
+    const { set, ready } = currentRange();
+    const heroCls = state.hero[0] != null && state.hero[1] != null ? E.classOf(state.hero[0], state.hero[1]) : null;
+    $('rangeGrid').innerHTML = E.CLASSES.map(cls => {
+      const inR = set ? set.has(cls.label) : ready;
+      return `<button class="rc ${inR ? 'in' : ''} ${cls.label === heroCls ? 'hero' : ''}" data-label="${cls.label}" title="${cls.label} · ${cls.combos.length} combos${rankIdx[cls.label] != null ? ' · #' + (rankIdx[cls.label] + 1) : ''}">${cls.label}</button>`;
+    }).join('');
+    const n = rangeCombos(set);
+    $('rangeSize').textContent = !ready ? 'ranking hands…' : `${customRange ? 'custom · ' : ''}${fmtInt(n)} combos · ${(n / 1326 * 100).toFixed(1)}%`;
+    $('pctLbl').textContent = customRange ? '—' : state.rangePct;
+    $('rangePct').value = state.rangePct;
+    $('presets').innerHTML = PRESETS.map(([name, p]) =>
+      `<button class="btn sm ${!customRange && state.rangePct === p ? 'on' : ''}" data-preset="${p}">${name} ${p}%</button>`).join('');
+  }
+  function renderInputs() {
+    renderSlots(); renderPicker(); syncQuick(); renderRange();
+    $('opps').value = state.opponents; $('pos').value = state.position;
+    $('iters').value = state.iterations;
+  }
+
+  // ---------- card placement ----------
+  function nextEmpty(after) {
+    let start = 0;
+    if (after) start = SLOT_ORDER.findIndex(([z, i]) => z === after[0] && i === after[1]) + 1;
+    for (let k = 0; k < SLOT_ORDER.length; k++) {
+      const [z, i] = SLOT_ORDER[(start + k) % SLOT_ORDER.length];
+      if (state[z][i] == null) return [z, i];
+    }
+    return null;
+  }
+  function placeCard(c) {
+    if (usedCards().has(c)) return;            // hard guarantee: one physical deck
+    const target = state.active || nextEmpty(null);
+    if (!target) return;
+    state[target[0]][target[1]] = c;
+    state.active = nextEmpty(target);
+    $('cardErr').textContent = '';
+    changed();
+  }
+  function randomUnused(k) {
+    const used = usedCards(), out = [];
+    while (out.length < k) {
+      const c = (Math.random() * 52) | 0;
+      if (!used.has(c)) { used.add(c); out.push(c); }
+    }
+    return out;
+  }
+
+  // ---------- analysis orchestration (Web Worker with sync fallback) ----------
+  const workerSrc = `const E=(${PokerEngine.toString()})();(${workerMain.toString()})(E,self);`;
+  let blobURL = null, workerOK = typeof Worker !== 'undefined';
+  try { blobURL = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })); } catch (e) { workerOK = false; }
+  let worker = null, busy = false, reqId = 0, timer = null, lastPayload = null;
+
+  function spawn(onmsg) {
+    if (!workerOK) return null;
+    try {
+      const w = new Worker(blobURL);
+      w.onmessage = onmsg;
+      w.onerror = ev => { ev.preventDefault && ev.preventDefault(); workerOK = false; worker = null; busy = false; runAnalysis(); };
+      return w;
+    } catch (e) { workerOK = false; return null; }
+  }
+  function onWorkerMsg(e) {
+    const m = e.data;
+    if (m.id !== reqId) return;
+    if (m.type === 'progress') $('progBar').style.width = (m.f * 100).toFixed(1) + '%';
+    else if (m.type === 'result') { busy = false; renderResults(m.res, m.ms); }
+    else if (m.type === 'error') { busy = false; renderError(m.message); }
+  }
+
+  function buildPayload() {
+    const hero = state.hero;
+    if (hero[0] == null || hero[1] == null) return { idle: 'Pick two hole cards to start.' };
+    const board = boardCards();
+    if (board.length === 1 || board.length === 2) return { idle: 'Finish the flop: the board needs 0, 3, 4 or 5 cards.' };
+    const { set, ready } = currentRange();
+    if (!ready) return { idle: 'Building preflop hand rankings…' };
+    if (set && set.size === 0) return { idle: 'Villain range is empty. Select at least one hand.' };
+    return { hero: hero.slice(), board, opponents: state.opponents, rangeLabels: set ? [...set] : null, iterations: state.iterations, seed: state.seed | 0 };
+  }
+
+  function schedule() { clearTimeout(timer); timer = setTimeout(runAnalysis, 180); }
+  function runAnalysis() {
+    const p = buildPayload();
+    renderPreflop();
+    if (p.idle) { renderIdle(p.idle); return; }
+    lastPayload = p;
+    const id = ++reqId;
+    $('progBar').style.width = '0%';
+    $('method').textContent = 'computing…';
+    if (workerOK) {
+      if (busy && worker) { worker.terminate(); worker = null; }   // cancel stale job
+      if (!worker) worker = spawn(onWorkerMsg);
+    }
+    if (worker) { busy = true; worker.postMessage({ type: 'analyze', id, payload: p }); return; }
+    setTimeout(() => {                                            // fallback: main thread
+      if (id !== reqId) return;
+      const t0 = Date.now();
+      try { renderResults(E.analyze(p, null), Date.now() - t0); } catch (err) { renderError(err.message); }
+    }, 0);
+  }
+
+  // ---------- rendering: results ----------
+  function renderIdle(msg) {
+    $('equityBody').innerHTML = `<div class="empty">${msg}</div>`;
+    $('method').textContent = '';
+    $('progBar').style.width = '0%';
+    ['decisionPanel', 'nextPanel', 'distPanel'].forEach(id => $(id).hidden = true);
+    lastEquity = null;
+  }
+  function renderError(msg) {
+    $('equityBody').innerHTML = `<div class="empty" style="color:var(--bad)">${msg}</div>`;
+    $('method').textContent = '';
+    ['decisionPanel', 'nextPanel', 'distPanel'].forEach(id => $(id).hidden = true);
+  }
+
+  function renderResults(res, ms) {
+    const m = res.main, p = lastPayload;
+    lastEquity = m.equity;
+    $('progBar').style.width = '100%';
+    const fair = 1 / (p.opponents + 1);
+    const ci = m.se * 1.96;
+    const rate = m.n / Math.max(1, res.mainMs) * 1000;
+    $('method').textContent = m.exact ? 'exact enumeration' : 'Monte Carlo';
+    $('equityBody').innerHTML = `
+      <div class="big">
+        <div class="eq">${(m.equity * 100).toFixed(m.exact ? 2 : 1)}<small>%</small></div>
+        <div>
+          ${m.exact ? '<span class="pill">exact</span>' : `<span class="pill">± ${(ci * 100).toFixed(2)}% <span class="faint">95% CI</span></span>`}
+          <span class="pill">fair share ${pct(fair, 0)}</span>
+          ${res.current != null ? `<span class="pill" style="color:var(--gold)">${E.describe(res.current)}</span>` : ''}
+        </div>
+      </div>
+      <div class="wtl">
+        <div style="width:${m.win * 100}%;background:var(--accent)"></div>
+        <div style="width:${m.tie * 100}%;background:var(--gold)"></div>
+        <div style="width:${m.lose * 100}%;background:#3a4842"></div>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--accent)"></i>Win <b>${pct(m.win)}</b></span>
+        <span><i class="dot" style="background:var(--gold)"></i>Tie <b>${pct(m.tie)}</b></span>
+        <span><i class="dot" style="background:#3a4842"></i>Lose <b>${pct(m.lose)}</b></span>
+      </div>
+      <div class="meta">${m.exact
+        ? `${fmtInt(m.n)} runouts over ${fmtInt(m.villainCombos)} villain combos`
+        : `${fmtInt(m.n)} trials · seed ${p.seed}${m.rejects ? ` · ${fmtInt(m.rejects)} rejected deals` : ''}`}
+        · ${fmtInt(rate)} hands/s · ${ms} ms total</div>`;
+    renderDecision(m.equity, p);
+    renderNext(res.next, m.equity, p.board.length);
+    renderDist(m.cat);
+    renderRange();
+  }
+
+  function renderDecision(eq, p) {
+    $('decisionPanel').hidden = false;
+    const pot = Math.max(0, +state.pot || 0), call = Math.max(0, +state.toCall || 0);
+    const fair = 1 / (p.opponents + 1);
+    let cls, title, body, kv;
+    if (call > 0) {
+      const req = call / (pot + call);
+      const ev = eq * (pot + call) - call;
+      const edge = eq - req;
+      if (edge > 0.03) { cls = 'good'; title = `Call is +EV (${money(ev)})`; }
+      else if (edge >= -0.03) { cls = 'mid'; title = `Close spot (${money(ev)})`; }
+      else { cls = 'bad'; title = `Fold, calling loses ${money(-ev)}`; }
+      body = edge > 0.03 && eq > Math.max(0.6, fair + 0.25)
+        ? 'You are well ahead of this range. Raising for value is worth considering.'
+        : edge >= -0.03 && edge <= 0.03
+          ? 'Equity is within 3 points of break-even. Implied odds, position and stack depth decide this one.'
+          : edge > 0 ? 'Your equity beats the price you are getting.' : `You need ${pct(-edge)} more equity, or implied odds, to justify the call.`;
+      kv = [['Equity', pct(eq)], ['Break-even', pct(req)], ['EV of call', money(ev)], ['Pot odds', `${(pot / call).toFixed(2)} : 1`]];
+    } else {
+      const share = eq * pot;
+      if (eq > fair + 0.2) { cls = 'good'; title = 'Bet for value'; body = 'Well above your fair share of the pot; worse hands in this range can pay you.'; }
+      else if (eq > fair) { cls = 'mid'; title = 'Check or bet small'; body = 'Slightly ahead of fair share; pot control is reasonable.'; }
+      else { cls = 'bad'; title = 'Check'; body = 'Below your fair share. Betting only works as a bluff against this range.'; }
+      kv = [['Equity', pct(eq)], ['Fair share', pct(fair)], ['Pot share', money(share)]];
+    }
+    $('decisionBody').innerHTML = `<div class="verdict ${cls}"><h3>${title}</h3><div class="muted">${body}</div></div>
+      <div class="kv">${kv.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
+      <p class="note">EV assumes the hand goes to showdown with no further betting (pure pot odds).</p>`;
+  }
+
+  function renderNext(next, eq, nb) {
+    if (!next) { $('nextPanel').hidden = true; return; }
+    $('nextPanel').hidden = false;
+    $('nextTitle').textContent = nb === 3 ? 'Turn card equity' : 'River card equity';
+    const byCard = {}; next.forEach(x => byCard[x.card] = x.equity);
+    let up = 0, down = 0, html = '';
+    for (let s = 0; s < 4; s++) for (let r = 12; r >= 0; r--) {
+      const c = E.makeCard(r, s);
+      if (!(c in byCard) || byCard[c] == null) { html += `<div class="ncc dead"><div class="k c${s}" style="color:var(--faint)">${RANK_DISPLAY[r]}${SYM[s]}</div><div class="e">·</div></div>`; continue; }
+      const e = byCard[c], d = e - eq;
+      if (d > 0.1) up++; else if (d < -0.1) down++;
+      const a = Math.min(1, Math.abs(d) / 0.35) * 0.85 + 0.08;
+      const bg = d >= 0 ? `rgba(60,207,142,${a.toFixed(2)})` : `rgba(239,107,107,${a.toFixed(2)})`;
+      html += `<div class="ncc" style="background:${bg}" title="${E.cardToString(c)}: ${pct(e)} (${d >= 0 ? '+' : ''}${(d * 100).toFixed(1)} pts)"><div class="k" style="color:#fff">${RANK_DISPLAY[r]}${SYM[s]}</div><div class="e">${Math.round(e * 100)}</div></div>`;
+    }
+    $('nextGrid').innerHTML = html;
+    $('nextSummary').textContent = `${up} cards +10 pts · ${down} cards −10 pts`;
+  }
+
+  function renderDist(cat) {
+    $('distPanel').hidden = false;
+    const max = Math.max(...cat, 1e-9);
+    let html = '';
+    for (let k = 8; k >= 0; k--) {
+      html += `<div class="bar ${cat[k] === 0 ? 'zero' : ''}"><span>${E.CATEGORY_NAMES[k]}</span><div class="t"><div style="width:${(cat[k] / max * 100).toFixed(1)}%"></div></div><span class="v">${cat[k] === 0 ? '—' : cat[k] < 0.001 ? '<0.1%' : pct(cat[k])}</span></div>`;
+    }
+    $('distBars').innerHTML = html;
+  }
+
+  function renderPreflop() {
+    const [a, b] = state.hero;
+    if (a == null || b == null || !ranking) { $('preflopPanel').hidden = true; return; }
+    $('preflopPanel').hidden = false;
+    const label = E.classOf(a, b), idx = rankIdx[label], top = cumPct[label], open = POS[state.position];
+    let cls, verdict;
+    if (top <= 5) { cls = 'good'; verdict = 'Premium: raise, and 3-bet for value'; }
+    else if (top <= open) { cls = 'good'; verdict = state.position === 'BB' ? 'Defend (call or 3-bet)' : 'Open-raise'; }
+    else if (top <= open + 8) { cls = 'mid'; verdict = 'Borderline: mix or fold'; }
+    else { cls = 'bad'; verdict = state.position === 'BB' ? 'Fold to a raise' : 'Fold'; }
+    $('preflopBody').innerHTML = `<div class="verdict ${cls}"><h3>${label}: ${verdict}</h3>
+      <div class="muted">#${idx + 1} of 169 classes, top ${top.toFixed(1)}% of combos. ${state.position} ${state.position === 'BB' ? 'defends' : 'opens'} about the top ${open}% (approximate 6-max, 100bb).</div></div>
+      <div class="kv"><div><span>vs random</span><b>${pct(ranking[idx].equity)}</b></div><div><span>Combos</span><b>${E.CLASS_BY_LABEL[label].combos.length}</b></div><div><span>Suited</span><b>${E.suitOf(a) === E.suitOf(b) ? 'yes' : 'no'}</b></div></div>`;
+  }
+
+  // ---------- URL state (shareable links) ----------
+  function syncHash() {
+    try {
+      const q = new URLSearchParams();
+      const h = state.hero.filter(c => c != null).map(E.cardToString).join('');
+      const b = boardCards().map(E.cardToString).join('');
+      if (h) q.set('h', h); if (b) q.set('b', b);
+      q.set('o', state.opponents); q.set('r', state.rangePct); q.set('pos', state.position);
+      q.set('pot', state.pot); q.set('call', state.toCall);
+      history.replaceState(null, '', '#' + q.toString());
+    } catch (e) { /* sandboxed contexts */ }
+  }
+  function loadHash() {
+    try {
+      const q = new URLSearchParams(location.hash.slice(1));
+      const h = E.parseCards(q.get('h') || '').cards.slice(0, 2);
+      const b = E.parseCards(q.get('b') || '').cards.filter(c => !h.includes(c)).slice(0, 5);
+      h.forEach((c, i) => state.hero[i] = c);
+      b.forEach((c, i) => state.board[i] = c);
+      if (q.has('o')) state.opponents = Math.min(8, Math.max(1, +q.get('o') || 1));
+      if (q.has('r')) state.rangePct = Math.min(100, Math.max(1, +q.get('r') || 100));
+      if (POS[q.get('pos')]) state.position = q.get('pos');
+      if (q.has('pot')) state.pot = +q.get('pot') || 0;
+      if (q.has('call')) state.toCall = +q.get('call') || 0;
+      state.active = nextEmpty(null);
+    } catch (e) { }
+  }
+
+  function changed() { renderInputs(); syncHash(); schedule(); }
+
+  // ---------- events ----------
+  $('slots').addEventListener('click', e => {
+    const btn = e.target.closest('.slot'); if (!btn) return;
+    const z = btn.dataset.zone, i = +btn.dataset.i;
+    if (state[z][i] != null) state[z][i] = null;
+    state.active = [z, i];
+    changed();
+  });
+  $('picker').addEventListener('click', e => {
+    const btn = e.target.closest('.pk'); if (btn && !btn.disabled) placeCard(+btn.dataset.card);
+  });
+  function applyQuick() {
+    const hp = E.parseCards($('qHero').value), bp = E.parseCards($('qBoard').value);
+    const err = hp.error ? 'Hero: ' + hp.error : bp.error ? 'Board: ' + bp.error
+      : hp.cards.length > 2 ? 'Hero takes exactly 2 cards.'
+      : bp.cards.length > 5 ? 'Board takes at most 5 cards.'
+      : (bp.cards.length === 1 || bp.cards.length === 2) ? 'Board needs 0, 3, 4 or 5 cards.'
+      : hp.cards.find(c => bp.cards.includes(c)) != null ? `${E.cardToString(hp.cards.find(c => bp.cards.includes(c)))} is in both hero and board.` : '';
+    $('cardErr').textContent = err;
+    if (err) return;
+    state.hero = [hp.cards[0] ?? null, hp.cards[1] ?? null];
+    state.board = [0, 1, 2, 3, 4].map(i => bp.cards[i] ?? null);
+    state.active = nextEmpty(null);
+    changed();
+  }
+  ['qHero', 'qBoard'].forEach(id => {
+    $(id).addEventListener('change', applyQuick);
+    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') { applyQuick(); e.target.blur(); } });
+  });
+  $('btnRandom').addEventListener('click', () => {
+    state.hero = [null, null]; state.board = [null, null, null, null, null];
+    state.hero = randomUnused(2); state.active = nextEmpty(null); changed();
+  });
+  $('btnStreet').addEventListener('click', () => {
+    if (state.hero.includes(null)) state.hero = state.hero.map(c => c ?? randomUnused(1)[0]);
+    const b = boardCards(), k = b.length < 3 ? 3 - b.length : b.length < 5 ? 1 : 0;
+    if (!k) return;
+    const nb = b.concat(randomUnused(k));
+    state.board = [0, 1, 2, 3, 4].map(i => nb[i] ?? null);
+    state.active = nextEmpty(null); changed();
+  });
+  $('btnClear').addEventListener('click', () => {
+    state.hero = [null, null]; state.board = [null, null, null, null, null]; state.active = ['hero', 0];
+    $('cardErr').textContent = ''; changed();
+  });
+  $('opps').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<option value="${n}">${n} ${n === 1 ? '(heads-up)' : ''}</option>`).join('');
+  $('opps').addEventListener('change', e => { state.opponents = +e.target.value; changed(); });
+  $('rangePct').addEventListener('input', e => { customRange = null; state.rangePct = +e.target.value; changed(); });
+  $('presets').addEventListener('click', e => {
+    const b = e.target.closest('[data-preset]'); if (!b) return;
+    customRange = null; state.rangePct = +b.dataset.preset; changed();
+  });
+  $('rangeGrid').addEventListener('click', e => {
+    const b = e.target.closest('.rc'); if (!b) return;
+    const { set, ready } = currentRange(); if (!ready) return;
+    customRange = new Set(set || E.CLASSES.map(c => c.label));
+    const l = b.dataset.label;
+    customRange.has(l) ? customRange.delete(l) : customRange.add(l);
+    changed();
+  });
+  $('pos').addEventListener('change', e => { state.position = e.target.value; renderPreflop(); syncHash(); });
+  $('pot').addEventListener('input', e => { state.pot = +e.target.value; if (lastEquity != null) renderDecision(lastEquity, lastPayload); syncHash(); });
+  $('call').addEventListener('input', e => { state.toCall = +e.target.value; if (lastEquity != null) renderDecision(lastEquity, lastPayload); syncHash(); });
+  $('iters').addEventListener('change', e => { state.iterations = +e.target.value; schedule(); });
+  $('seed').addEventListener('change', e => { state.seed = +e.target.value | 0; schedule(); });
+  $('fourColor').addEventListener('change', e => {
+    document.body.classList.toggle('four', e.target.checked);
+    try { localStorage.setItem('hel-four', e.target.checked ? '1' : '0'); } catch (err) { }
+  });
+
+  // ---------- startup ----------
+  function setRanking(r) {
+    ranking = r; cumPct = {}; rankIdx = {};
+    let acc = 0;
+    r.forEach((x, i) => { acc += x.combos; cumPct[x.label] = acc / 1326 * 100; rankIdx[x.label] = i; });
+    renderRange(); renderPreflop(); schedule();
+  }
+  function loadRanking() {
+    try { const c = JSON.parse(localStorage.getItem(RANK_CACHE_KEY)); if (Array.isArray(c) && c.length === 169) { setRanking(c); return; } } catch (e) { }
+    const done = r => { setRanking(r); try { localStorage.setItem(RANK_CACHE_KEY, JSON.stringify(r)); } catch (e) { } };
+    const rw = spawn(e => { if (e.data.type === 'ranking') { done(e.data.ranking); rw.terminate(); } });
+    if (rw) rw.postMessage({ type: 'rank', iters: 4000, seed: 2024 });
+    else setTimeout(() => done(E.rankStartingHands(4000, 2024)), 30);
+  }
+  function runTests() {
+    const t = E.runSelfTests(), passed = t.filter(x => x.ok).length;
+    $('testSummary').innerHTML = `Evaluator self-test: <span class="${passed === t.length ? 'ok' : ''}" style="${passed === t.length ? '' : 'color:var(--bad)'}">${passed}/${t.length} passed</span>`;
+    $('testDetail').textContent = t.map(x => `${x.ok ? 'PASS' : 'FAIL'}  ${x.name}  →  ${x.got}`).join('\n');
+    // micro-benchmark
+    const rng = E.mulberry32(7), cards = new Int32Array(7), N = 200000;
+    const t0 = performance.now();
+    let acc = 0;
+    for (let i = 0; i < N; i++) { for (let j = 0; j < 7; j++) cards[j] = (rng() * 52) | 0; acc ^= E.evaluate(cards, 7); }
+    const rate = N / (performance.now() - t0) * 1000;
+    $('engineInfo').textContent = `${(rate / 1e6).toFixed(1)}M evals/s on this device · ${workerOK ? 'Web Worker' : 'main thread'}`;
+  }
+
+  try { if (localStorage.getItem('hel-four') === '1') { $('fourColor').checked = true; document.body.classList.add('four'); } } catch (e) { }
+  loadHash();
+  $('pot').value = state.pot; $('call').value = state.toCall; $('seed').value = state.seed;
+  renderInputs();
+  runTests();
+  loadRanking();
+  schedule();
+})();
+</script>
 </body>
 </html>
